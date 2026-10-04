@@ -1,0 +1,105 @@
+{
+  "num_features": [
+    "sales",
+    "quantity",
+    "discount",
+    "shipping_cost",
+    "delivery_days",
+    "sales_per_unit"
+  ],
+  "cat_features": [
+    "ship_mode",
+    "order_priority",
+    "segment",
+    "category",
+    "sub_category",
+    "region",
+    "market"
+  ],
+  "cluster_features": [
+    "total_sales",
+    "n_orders",
+    "avg_discount",
+    "profit_margin"
+  ],
+  "categories": {
+    "ship_mode": [
+      "First Class",
+      "Same Day",
+      "Second Class",
+      "Standard Class"
+    ],
+    "order_priority": [
+      "Critical",
+      "High",
+      "Low",
+      "Medium"
+    ],
+    "segment": [
+      "Consumer",
+      "Corporate",
+      "Home Office"
+    ],
+    "category": [
+      "Furniture",
+      "Office Supplies",
+      "Technology"
+    ],
+    "sub_category": [
+      "Accessories",
+      "Appliances",
+      "Art",
+      "Binders",
+      "Bookcases",
+      "Chairs",
+      "Copiers",
+      "Envelopes",
+      "Fasteners",
+      "Furnishings",
+      "Labels",
+      "Machines",
+      "Paper",
+      "Phones",
+      "Storage",
+      "Supplies",
+      "Tables"
+    ],
+    "region": [
+      "Africa",
+      "Canada",
+      "Caribbean",
+      "Central",
+      "Central Asia",
+      "EMEA",
+      "East",
+      "North",
+      "North Asia",
+      "Oceania",
+      "South",
+      "Southeast Asia",
+      "West"
+    ],
+    "market": [
+      "APAC",
+      "Africa",
+      "Canada",
+      "EMEA",
+      "EU",
+      "LATAM",
+      "US"
+    ]
+  },
+  "classification_metrics": {
+    "accuracy": 0.9153,
+    "precision": 0.9409,
+    "recall": 0.9452,
+    "f1": 0.9431,
+    "roc_auc": 0.9602
+  },
+  "cluster_names": {
+    "0": "C0: Low-Spend, Full-Price",
+    "1": "C1: Low-Spend, Discount-Driven (Loss-Making)",
+    "2": "C2: High-Spend, Full-Price"
+  },
+  "best_k": 3
+}
