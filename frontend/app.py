@@ -1,28 +1,38 @@
+import json
 import os
+import subprocess
+import sys
+from pathlib import Path
 
+import joblib
 import pandas as pd
-import requests
 import streamlit as st
 
-try:
-    BACKEND = os.getenv("BACKEND_URL") or st.secrets["BACKEND_URL"]
-except Exception:
-    BACKEND = "http://localhost:8000"
+import eda
+
+MODEL_DIR = Path(__file__).resolve().parent.parent / "model"
+
+@st.cache_resource
+def load_models_and_meta():
+    clf_path = MODEL_DIR / "classifier.joblib"
+    if not clf_path.exists():
+        db_path = eda.ensure_db()
+        st.info("Membuat model Machine Learning untuk pertama kali...")
+        subprocess.run([sys.executable, str(MODEL_DIR / "train.py"), str(db_path)], check=True)
+
+    clf = joblib.load(MODEL_DIR / "classifier.joblib")
+    clu = joblib.load(MODEL_DIR / "clusterer.joblib")
+    meta = json.loads((MODEL_DIR / "meta.json").read_text())
+    return clf, clu, meta
 
 st.set_page_config(page_title="LnT Camp 2026 - Superstore ML", layout="centered")
 st.title("Superstore ML Simulator")
 st.caption("Bridging the Gap: Empowering Future Talent through Machine Learning for Industry Innovation")
 
-
-@st.cache_data(ttl=300)
-def get_meta():
-    return requests.get(f"{BACKEND}/meta", timeout=60).json()
-
-
 try:
-    meta = get_meta()
+    clf, clu, meta = load_models_and_meta()
 except Exception as e:
-    st.error(f"Backend tidak bisa dihubungi di {BACKEND}: {e}")
+    st.error(f"Gagal memuat model: {e}")
     st.stop()
 
 cats = meta["categories"]
@@ -46,30 +56,28 @@ if page.startswith("Klasifikasi"):
         market = c2.selectbox("Market", cats["market"])
         go = st.form_submit_button("Prediksi")
     if go:
-        payload = dict(sales=sales, quantity=int(quantity), discount=discount, shipping_cost=shipping_cost,
-                       delivery_days=int(delivery_days), ship_mode=ship_mode, order_priority=order_priority,
-                       segment=segment, category=category, sub_category=sub_category, region=region, market=market)
-        r = requests.post(f"{BACKEND}/predict/classification", json=payload, timeout=60)
-        if r.ok:
-            res = r.json()
-            (st.success if res["is_profitable"] else st.error)(
-                "Diprediksi PROFITABLE" if res["is_profitable"] else "Diprediksi TIDAK profitable")
-            st.metric("Probabilitas profitable", f"{res['probability_profitable']:.1%}")
-        else:
-            st.error(r.text)
+        row = dict(sales=sales, quantity=int(quantity), discount=discount, shipping_cost=shipping_cost,
+                   delivery_days=int(delivery_days), ship_mode=ship_mode, order_priority=order_priority,
+                   segment=segment, category=category, sub_category=sub_category, region=region, market=market)
+        row["sales_per_unit"] = row["sales"] / row["quantity"]
+        df_in = pd.DataFrame([row])[meta["num_features"] + meta["cat_features"]]
+        proba = float(clf.predict_proba(df_in)[0, 1])
+        is_profitable = proba >= 0.5
+        (st.success if is_profitable else st.error)(
+            "Diprediksi PROFITABLE" if is_profitable else "Diprediksi TIDAK profitable")
+        st.metric("Probabilitas profitable", f"{proba:.1%}")
 elif page == "EDA Dashboard":
     st.subheader("Ringkasan data Global Superstore")
-    r = requests.get(f"{BACKEND}/eda/overview", timeout=180)
-    if not r.ok:
-        st.error(r.text)
-    else:
-        d = r.json()
+    try:
+        d = eda.overview()
         st.metric("Jumlah order item", f"{d['n_rows']:,}")
         st.write("**Total profit per kategori**"); st.bar_chart(pd.Series(d["profit_by_category"]))
         st.write("**Total profit per market**"); st.bar_chart(pd.Series(d["profit_by_market"]))
         st.write("**Rata-rata profit per tier diskon**")
         st.bar_chart(pd.Series(d["avg_profit_by_discount_tier"]).reindex(["0%", "1-20%", "21-40%", ">40%"]))
         st.write("**Sales bulanan**"); st.line_chart(pd.Series(d["monthly_sales"]))
+    except Exception as e:
+        st.error(f"Gagal memuat EDA dashboard: {e}")
 else:
     st.subheader("Tentukan segmen customer")
     with st.form("clu"):
@@ -79,10 +87,9 @@ else:
         profit_margin = st.number_input("Profit margin (total profit / total sales)", value=0.10, format="%.3f")
         go = st.form_submit_button("Tentukan segmen")
     if go:
-        r = requests.post(f"{BACKEND}/predict/clustering", json=dict(
-            total_sales=total_sales, n_orders=int(n_orders), avg_discount=avg_discount,
-            profit_margin=profit_margin), timeout=60)
-        if r.ok:
-            st.success(f"Segmen: {r.json()['cluster_label']}")
-        else:
-            st.error(r.text)
+        x_in = dict(total_sales=total_sales, n_orders=int(n_orders), avg_discount=avg_discount, profit_margin=profit_margin)
+        df_in = pd.DataFrame([x_in])[clu["features"]]
+        c = int(clu["pipeline"].predict(df_in)[0])
+        label = clu["names"][c]
+        st.success(f"Segmen: {label}")
+
