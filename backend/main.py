@@ -41,9 +41,15 @@ class CustomerInput(BaseModel):
     profit_margin: float = Field(examples=[0.1], description="total_profit / total_sales")
 
 
+@app.get("/")
+def root():
+    return {"message": "LnT Camp 2026 - Superstore ML API is running", "docs": "/docs"}
+
+
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
 
 
 @app.get("/meta")
