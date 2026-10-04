@@ -1,22 +1,40 @@
 import json
+import os
+import subprocess
+import sys
 from pathlib import Path
 
 import joblib
 import pandas as pd
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi import HTTPException
 from pydantic import BaseModel, Field
 
 import eda
 
 MODEL_DIR = Path(__file__).resolve().parent.parent / "model"
-clf = joblib.load(MODEL_DIR / "classifier.joblib")
-clu = joblib.load(MODEL_DIR / "clusterer.joblib")
-meta = json.loads((MODEL_DIR / "meta.json").read_text())
+if not (MODEL_DIR / "classifier.joblib").exists():
+    MODEL_DIR = Path(__file__).resolve().parent / "model"
+
+_clf = None
+_clu = None
+_meta = None
+
+def get_models():
+    global _clf, _clu, _meta
+    if _clf is None:
+        clf_path = MODEL_DIR / "classifier.joblib"
+        if not clf_path.exists():
+            db_path = eda.ensure_db()
+            subprocess.run([sys.executable, str(Path(__file__).resolve().parent.parent / "model" / "train.py"), str(db_path)], check=True)
+        _clf = joblib.load(MODEL_DIR / "classifier.joblib")
+        _clu = joblib.load(MODEL_DIR / "clusterer.joblib")
+        _meta = json.loads((MODEL_DIR / "meta.json").read_text())
+    return _clf, _clu, _meta
 
 app = FastAPI(title="LnT Camp 2026 - Superstore ML API")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+
 
 
 class ProfitInput(BaseModel):
@@ -54,12 +72,14 @@ def health():
 
 @app.get("/meta")
 def get_meta():
+    _, _, meta = get_models()
     return {"categories": meta["categories"], "classification_metrics": meta["classification_metrics"],
             "cluster_names": meta["cluster_names"]}
 
 
 @app.post("/predict/classification")
 def predict_profit(x: ProfitInput):
+    clf, _, meta = get_models()
     row = x.model_dump()
     row["sales_per_unit"] = row["sales"] / row["quantity"]
     df = pd.DataFrame([row])[meta["num_features"] + meta["cat_features"]]
@@ -69,9 +89,11 @@ def predict_profit(x: ProfitInput):
 
 @app.post("/predict/clustering")
 def predict_cluster(x: CustomerInput):
+    _, clu, _ = get_models()
     df = pd.DataFrame([x.model_dump()])[clu["features"]]
     c = int(clu["pipeline"].predict(df)[0])
     return {"cluster": c, "cluster_label": clu["names"][c]}
+
 
 
 @app.get("/eda/overview")
